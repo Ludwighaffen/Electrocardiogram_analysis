@@ -1,0 +1,142 @@
+https://github.com/MIT-LCP/wfdb-python/blob/master/demo.ipynb
+https://physionet.org/physiobank/database/pwave/
+
+
+1. Reading data:
+
+#inctall as : pip install wfdb
+import wfdb
+
+#read waveform
+record = wfdb.rdrecord('www.physionet.org/physiobank/database/mitdb/100')
+
+#read anotation
+ann = wfdb.rdann('www.physionet.org/physiobank/database/mitdb/100', 'pwave')
+
+#chack whats inside
+display(record.__dict__)
+#fs: 360 hz
+#n_sig: number of channels. use the MLII (sig_name)
+
+#plot all with original annotation of the P-wave
+wfdb.plot_wfdb(record=record, annotation=ann)
+
+
+x = record.p_signal[:,0]
+
+#create label for each sample. +-6 samples around annotation is the Pwave.
+
+y = np.zeros(x.shape, dtype=np.int32)
+n = x.shape[0]
+ext = 6
+for i,v in zip(ann.sample, ann.symbol):
+	if v=='p':
+		y[max(i-ext, 0):min(i+ext+1, n)]=1
+
+		
+#Plot data and label
+t = np.arange(n)
+plt.plot(t, x)
+plt.plot(t, y)
+plt.show()
+
+
+
+
+2. Create a 1D DNN to predict each sample's class (predicts for a single sample).
+2. Create a 1D FCN to predict each sample's class for the whole crop.
+3. Try receptive fields of 0.5, 1, and 2 periods. You might want to downsample the data
+4. How would you measure the resulting performance?
+
+
+Example (for Python 1.8) of 1d convolution operations and upscaling:
+
+def conv_1D(x, n_output_ch,
+            k_w=3,
+            s_x=1,
+            activation=tf.nn.relu,
+            padding='VALID', name='conv1d', reuse=None
+			):
+    """
+    Helper for creating a 1d convolution operation.
+
+    Args:
+        x (tf.Tensor): Input tensor to convolve.
+        n_output_ch (int): Number of filters.
+        k_w (int): Kernel width
+        s_x (int): Width stride
+        activation (tf.Function): activation function to apply to the convolved data
+        padding (str): Padding type: 'SAME' or 'VALID'
+        name (str): Variable scope
+        reuse (tf.Flag): Flag whether to use existing variable. Can be False(None), True, or tf.AUTO_REUSE
+
+    Returns:
+        op (tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor): Output of activation, convolution, weights, bias
+    """
+	with tf.variable_scope(name or 'conv1d', reuse=reuse):
+		w = tf.get_variable(name='W',
+							shape=[k_w, x.get_shape()[-1], n_output_ch],
+							initializer=tf.contrib.layers.xavier_initializer()
+							)
+
+		wx = tf.nn.conv1d(name='conv',
+						input=x, filter=w,
+						strides=[1, s_x, 1],
+						padding=padding
+						)
+	
+		b = tf.get_variable(name='b',
+							shape=[n_output_ch], initializer=tf.constant_initializer(value=0.0)
+							)
+		h = tf.nn.bias_add(name='h',
+						value=wx,
+						bias=b
+						)
+
+		if activation is not None:
+			x = activation(h, name=activation.__name__)
+		else:
+			x = h
+	
+	return x, h, w, b 
+	
+def upscale_1D(x,
+               n_output_ch,
+               name='tconv1d',
+               padding='VALID',
+               reuse=None):
+    """
+    Helper for creating a 1D upsampling operation of factor 2.
+
+    Args:
+        x (tf.Tensor): Input tensor to convolve.
+        n_output_ch (int): Number of filters.
+        padding (str): Padding type: 'SAME' or 'VALID'
+        name (str): Variable scope
+        reuse (tf.Flag): Flag whether to use existing variable. Can be False(None), True, or tf.AUTO_REUSE
+
+    Returns:
+        op (tf.Tensor, tf.Tensor, tf.Tensor): Output of activation, Output of convolution, weights
+    """
+
+    ish = x.get_shape().as_list()
+
+    batch_size = tf.shape(x)[0]
+    osh = tf.stack([batch_size, 3, n_output_ch])
+
+    with tf.variable_scope(name or 'tconv1d', reuse=reuse):
+		w = tf.get_variable(name='W',
+			shape=[3, n_output_ch, ish[-1]],
+			initializer=tf.contrib.layers.xavier_initializer()
+			)
+
+        wx = tf.contrib.nn.conv1d_transpose(
+            name='upscale',
+            value=x,
+            filter=w,
+            output_shape=osh,
+            strides=[1, 2, 1],
+            padding=padding)
+
+        x = wx
+    return x, wx, w 
