@@ -61,16 +61,7 @@ ecg = record.p_signal[:, 0]
 p_ts = np.zeros(record.sig_len, dtype=int)
 width = 6
 for i in ann.sample:
-    p_ts[max(i-width, 0):min(i+width, record.sig_len)] = -1
-# one-hot encode p-wave time trace for model training
-p_ts_1hot = np.zeros((p_ts.shape[0], 2), dtype=int)
-for i, value in enumerate(p_ts):
-    if value == -1:
-        p_ts_1hot[i][0] = 1
-        p_ts_1hot[i][1] = 0
-    elif value == 0:
-        p_ts_1hot[i][0] = 0
-        p_ts_1hot[i][1] = 1
+    p_ts[max(i-width, 0):min(i+width, record.sig_len)] = 1
     
 # translate discrete r-wave annotation into digital signal
 # r-wave is +-width around annotation
@@ -119,28 +110,31 @@ plt.show()
 # METHOD 1
 """
 Split data into chunks of periods (use atr annotation as marker)
-cut chunks slightly after r-wave (offset: 30 original samples)
+The start of the chunk isi randomly chosen on the periodic signal
 remove the first (weird annotation) and the last two heartbeats (for dimension consistency)
-N.B. There are a few (17) heartbeats with no p-wave annotated
-There is only one weird heartbeat (lasting 407 samples: heartbeat # 1907)
-                                   
-Drawback:
-    - the model might just learn the average sample position on the period chunk...
+
+N.B.:
+    There are a few (17) heartbeats with no p-wave annotated
+    There is only one weird heartbeat (lasting 407 samples: heartbeat # 1907)
 """
 print(f"There are {np.count_nonzero(period > 400)} periods longer than 400 original samples, meaning with no r-wave.")
-sampling = 5
-ecg_packets = np.zeros(shape=(atr.sample.shape[0]-3, int(period_mean/sampling)))
+sampling = 2
+packet_length = ecg[: period_mean : sampling].shape[0]
+ecg_packets = np.zeros(shape=(atr.sample.shape[0]-3, packet_length))
 p_ts_packets = np.zeros(shape=ecg_packets.shape, dtype=int)
-p_ts_1hot_packets = np.zeros(shape=(ecg_packets.shape + (2, )), dtype=int)
-for hb, sample in enumerate(atr.sample[1:-2]):
-    ecg_packets[hb, :] = ecg[sample+30 : sample+30+period_mean : sampling]
-    p_ts_packets[hb, :] = p_ts[sample+30 : sample+30+period_mean : sampling]
-    p_ts_1hot_packets[hb, :, :] = p_ts_1hot[sample+30 : sample+30+period_mean : sampling, :]
 
-for i in range(0, 1):
-    plt.plot(ecg_packets[i, :])
+# for hb, sample in enumerate(atr.sample[1:-2]):
+#     offset = np.random.randint(low=0, high=int(period_mean/sampling))
+#     ecg_packets[hb, :] = ecg[sample+offset : sample+offset+period_mean : sampling]
+#     p_ts_packets[hb, :] = p_ts[sample+offset : sample+offset+period_mean : sampling]
 
-# one-hot encode p-wave time series    
+for i in range(ecg_packets.shape[0]):
+    offset = np.random.randint(low=0, high=ecg.shape[0]-period_mean)
+    ecg_packets[i, :] = ecg[offset : offset+period_mean : sampling]
+    p_ts_packets[i, :] = p_ts[offset : offset+period_mean : sampling]
+
+for i in range(0, 100):
+    plt.plot(ecg_packets[i, :]) 
 
 # split train, test
 perc_split = 0.8
@@ -149,23 +143,46 @@ ecg_packets_train = ecg_packets[0:int(n_inputs*perc_split)]
 ecg_packets_test = ecg_packets[int(n_inputs*perc_split):-1]
 p_ts_packets_train = p_ts_packets[0:int(n_inputs*perc_split)]
 p_ts_packets_test = p_ts_packets[int(n_inputs*perc_split):-1]
-# p_ts_1hot_packets_train = p_ts_packets[0:int(n_inputs*perc_split), :, :]
-# p_ts_1hot_packets_test = p_ts_packets[int(n_inputs*perc_split):-1, :, :]
 
-# %% MODEL 1: Dense neural network
 
+# %% MODEL 1: Dense neural network - simplest model
 # Build model
-x = tf.keras.layers.Input(dtype='float64', shape=ecg_packets.shape[1])
+d_input = ecg_packets.shape[1]
+x = tf.keras.layers.Input(dtype='float64', shape=d_input)
 
 # lay_1 = tf.keras.layers.Dense(units=period_mean, activation='relu')(x)
 # lay_2 = tf.keras.layers.Dense(units=50, activation='relu')(lay_1)
 # lay_3 = tf.keras.layers.Dense(units=2, activation='softmax')(lay_2)
    
-lay_1 = tf.keras.layers.Dense(units=10, activation='relu', name='L1')(x)
-lay_2 = tf.keras.layers.Dense(units=2, activation='softmax', name='L2')(lay_1)
+lay_1 = tf.keras.layers.Dense(units=d_input, activation='sigmoid', name='L1')(x)
 
-#prediction: onehot->integer
-pred = tf.argmax(lay_2, axis=1)
+#prediction: probability->integer
+# pred = 
+
+#TBD: adding pred to the model output prudces an error (expected int64, instead had float)
+model = tf.keras.Model(inputs=x, outputs=[lay_1])
+
+model.summary()
+tf.keras.utils.plot_model(model, show_shapes=True)
+
+model.compile(optimizer='Adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+# %% MODEL 2: Dense neural network - more complex
+# Build model
+d_input = ecg_packets.shape[1]
+x = tf.keras.layers.Input(dtype='float64', shape=d_input)
+
+# lay_1 = tf.keras.layers.Dense(units=period_mean, activation='relu')(x)
+# lay_2 = tf.keras.layers.Dense(units=50, activation='relu')(lay_1)
+# lay_3 = tf.keras.layers.Dense(units=2, activation='softmax')(lay_2)
+   
+lay_1 = tf.keras.layers.Dense(units=d_input*2, activation='relu', name='L1')(x)
+lay_2 = tf.keras.layers.Dense(units=d_input, activation='sigmoid', name='L2')(lay_1)
+
+#prediction: probability->integer
+# pred = 
 
 #TBD: adding pred to the model output prudces an error (expected int64, instead had float)
 model = tf.keras.Model(inputs=x, outputs=[lay_2])
@@ -175,11 +192,34 @@ tf.keras.utils.plot_model(model, show_shapes=True)
 
 model.compile(optimizer='Adam',
               loss='binary_crossentropy',
-              metrics=['binary_accuracy'])
+              metrics=['accuracy'])
 
-# %%
-history = model.fit(x=ecg_packets_train,
-                    y=p_ts_packets_train
+# %% TRAIN MODEL
+hist = model.fit(x=ecg_packets_train,
+                    y=p_ts_packets_train,
                     epochs=5,
-                    batch_size=20,
-                    validation_data=)
+                    batch_size=10,
+                    validation_data=(ecg_packets_test, p_ts_packets_test))
+
+# %% PLOT RESULTS
+fig, axs = plt.subplots(1, 2, figsize=(10,5))
+axs[0].plot(hist.epoch, hist.history['loss'])
+axs[0].plot(hist.epoch, hist.history['val_loss'])
+axs[0].legend(('training loss', 'validation loss'), loc='lower right')
+axs[1].plot(hist.epoch, hist.history['acc'])
+axs[1].plot(hist.epoch, hist.history['val_acc'])
+
+axs[1].legend(('training accuracy', 'validation accuracy'), loc='lower right')
+plt.show()
+
+# %% EXAMINE RESULTS
+pred_test = model.predict(ecg_packets_test)
+
+ax = plt.gca()
+for i in range(0, 5):
+    color = next(ax._get_lines.prop_cycler)['color']
+    plt.plot(ecg_packets_test[i, :], color = color)
+    plt.plot(p_ts_packets_test[i, :], color=color)
+    plt.plot(pred_test[i, :], color=color)
+    plt.show()
+
