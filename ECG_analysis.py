@@ -32,8 +32,10 @@ import wfdb
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import tensorflow.keras
 from scipy.stats import norm
 from scipy.optimize import curve_fit
+import time
 
 from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
@@ -192,22 +194,24 @@ tf.keras.utils.plot_model(model, show_shapes=True)
 
 model.compile(optimizer='Adam',
               loss='binary_crossentropy',
-              metrics=['accuracy'])
+              metrics=['binary_accuracy'])
 
 # %% TRAIN MODEL
+start = time.time()
 hist = model.fit(x=ecg_packets_train,
                     y=p_ts_packets_train,
-                    epochs=5,
-                    batch_size=10,
+                    epochs=200,
+                    batch_size=100,
                     validation_data=(ecg_packets_test, p_ts_packets_test))
+print(time.time()-start)
 
 # %% PLOT RESULTS
 fig, axs = plt.subplots(1, 2, figsize=(10,5))
 axs[0].plot(hist.epoch, hist.history['loss'])
 axs[0].plot(hist.epoch, hist.history['val_loss'])
 axs[0].legend(('training loss', 'validation loss'), loc='lower right')
-axs[1].plot(hist.epoch, hist.history['acc'])
-axs[1].plot(hist.epoch, hist.history['val_acc'])
+axs[1].plot(hist.epoch, hist.history['binary_accuracy'])
+axs[1].plot(hist.epoch, hist.history['val_binary_accuracy'])
 
 axs[1].legend(('training accuracy', 'validation accuracy'), loc='lower right')
 plt.show()
@@ -216,9 +220,9 @@ plt.show()
 pred_test = model.predict(ecg_packets_test)
 
 ax = plt.gca()
-for i in range(0, 5):
+for i in range(0, 30):
     color = next(ax._get_lines.prop_cycler)['color']
-    plt.plot(ecg_packets_test[i, :], color = color)
+    # plt.plot(ecg_packets_test[i, :], color = color)
     plt.plot(p_ts_packets_test[i, :], color=color)
     plt.plot(pred_test[i, :], color=color)
     plt.show()
