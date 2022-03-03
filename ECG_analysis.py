@@ -36,6 +36,7 @@ import tensorflow.keras
 from scipy.stats import norm
 from scipy.optimize import curve_fit
 import time
+from matplotlib.widgets import Slider
 
 from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
@@ -45,7 +46,8 @@ InteractiveShell.ast_node_interactivity = "all"
 
 
 # %% LOAD FILES
-path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+# path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
 os.chdir(path)
 
 record = wfdb.rdrecord("mitdb/100")
@@ -73,70 +75,74 @@ for i in atr.sample:
     r_ts[max(i-width, 0):min(i+width, record.sig_len)] = 1
 
 
-# %% EXPLORE AND PREPARE DATA
-# analyse heartbeats periods
-period = np.diff(atr.sample)
+# %% EXPLORE DATA
+# # analyse heartbeats periods
+# period = np.diff(atr.sample)
 
-# Fit a normal distribution to period distribution
-# TBD : fit can be improved (pdf vs absolute counts)
-mu, std = norm.fit(period) 
-period_mean = int(mu)
+# # Fit a normal distribution to period distribution
+# # TBD : fit can be improved (pdf vs absolute counts)
+# mu, std = norm.fit(period) 
+# period_mean = int(mu)
   
-# Plot the histogram and Probability Density Function.
-plt.figure()
-plt.hist(period, bins=100, density=True, alpha=0.6, color='b')
+# # Plot the histogram and Probability Density Function.
+# plt.figure()
+# plt.hist(period, bins=100, density=True, alpha=0.6, color='b')
   
-x_min, x_max = plt.xlim()
-x_prob = np.linspace(x_min, x_max, 100)
-prob = norm.pdf(x_prob, period_mean, std)
+# x_min, x_max = plt.xlim()
+# x_prob = np.linspace(x_min, x_max, 100)
+# prob = norm.pdf(x_prob, period_mean, std)
   
-plt.plot(x_prob, prob, 'k', linewidth=2)
-title = f"Fit Values: {period_mean} and {std}"
-plt.title(title)
-plt.show()
+# plt.plot(x_prob, prob, 'k', linewidth=2)
+# title = f"Fit Values: {period_mean} and {std}"
+# plt.title(title)
+# plt.show()
 
-# Plot time series
-n_samples = period_mean*6
-heartbeats = np.where(period>00)[0]
-case = 1
-plt.figure()
-plt.plot(ecg, label='ecg')
-plt.plot(p_ts, label='p-wave')
-plt.plot(r_ts, label='r-wave')
-plt.xlim([atr.sample[heartbeats[case]-1], atr.sample[heartbeats[case]-1]+ n_samples])
-# plt.xlim([0, n_samples])
-plt.legend()
-plt.show()
+# """
+# N.B.:
+#     There are a few (17) heartbeats with no p-wave annotated
+#     There is only one weird heartbeat (lasting 407 samples: heartbeat # 1907)
+# """
+# print(f"There are {np.count_nonzero(period > 400)} periods longer than 400 original samples, meaning with no r-wave.")
 
-# Prep of data input
-# METHOD 1
+# # Plot time series
+# n_samples = period_mean*6
+# heartbeats = np.where(period>00)[0]
+# case = 1
+# plt.figure()
+# plt.plot(ecg, label='ecg')
+# plt.plot(p_ts, label='p-wave')
+# plt.plot(r_ts, label='r-wave')
+# plt.xlim([atr.sample[heartbeats[case]-1], atr.sample[heartbeats[case]-1]+ n_samples])
+# # plt.xlim([0, n_samples])
+# plt.legend()
+# plt.show()
+
+# """first r-wave is wrongly labelled"""
+# plt.figure()
+# plt.plot(ecg, label='ecg')
+# plt.plot(p_ts, label='p-wave')
+# plt.plot(r_ts, label='r-wave')
+# plt.xlim([0, 500])
+# # plt.xlim([0, n_samples])
+# plt.legend()
+# plt.show()
+
+# %% PREP DATA
 """
-Split data into chunks of periods (use atr annotation as marker)
-The start of the chunk isi randomly chosen on the periodic signal
+Split data into packets of same length to feed to the model
+The start of the chunk isi randomly chosen
 remove the first (weird annotation) and the last two heartbeats (for dimension consistency)
-
-N.B.:
-    There are a few (17) heartbeats with no p-wave annotated
-    There is only one weird heartbeat (lasting 407 samples: heartbeat # 1907)
 """
-print(f"There are {np.count_nonzero(period > 400)} periods longer than 400 original samples, meaning with no r-wave.")
+packet_length = 300
 sampling = 2
-packet_length = ecg[: period_mean : sampling].shape[0]
-ecg_packets = np.zeros(shape=(atr.sample.shape[0]-3, packet_length))
+packet_length_ds = ecg[: packet_length : sampling].shape[0]
+ecg_packets = np.zeros(shape=(int(ecg.shape[0]/packet_length), packet_length_ds))
 p_ts_packets = np.zeros(shape=ecg_packets.shape, dtype=int)
 
-# for hb, sample in enumerate(atr.sample[1:-2]):
-#     offset = np.random.randint(low=0, high=int(period_mean/sampling))
-#     ecg_packets[hb, :] = ecg[sample+offset : sample+offset+period_mean : sampling]
-#     p_ts_packets[hb, :] = p_ts[sample+offset : sample+offset+period_mean : sampling]
-
 for i in range(ecg_packets.shape[0]):
-    offset = np.random.randint(low=0, high=ecg.shape[0]-period_mean)
-    ecg_packets[i, :] = ecg[offset : offset+period_mean : sampling]
-    p_ts_packets[i, :] = p_ts[offset : offset+period_mean : sampling]
-
-for i in range(0, 100):
-    plt.plot(ecg_packets[i, :]) 
+    offset = np.random.randint(low=0, high=ecg.shape[0]-packet_length)
+    ecg_packets[i, :] = ecg[offset : offset+packet_length : sampling]
+    p_ts_packets[i, :] = p_ts[offset : offset+packet_length : sampling]
 
 # split train, test
 perc_split = 0.8
@@ -151,10 +157,6 @@ p_ts_packets_test = p_ts_packets[int(n_inputs*perc_split):-1]
 # Build model
 d_input = ecg_packets.shape[1]
 x = tf.keras.layers.Input(dtype='float64', shape=d_input)
-
-# lay_1 = tf.keras.layers.Dense(units=period_mean, activation='relu')(x)
-# lay_2 = tf.keras.layers.Dense(units=50, activation='relu')(lay_1)
-# lay_3 = tf.keras.layers.Dense(units=2, activation='softmax')(lay_2)
    
 lay_1 = tf.keras.layers.Dense(units=d_input, activation='sigmoid', name='L1')(x)
 
@@ -165,20 +167,16 @@ lay_1 = tf.keras.layers.Dense(units=d_input, activation='sigmoid', name='L1')(x)
 model = tf.keras.Model(inputs=x, outputs=[lay_1])
 
 model.summary()
-tf.keras.utils.plot_model(model, show_shapes=True)
+# tf.keras.utils.plot_model(model, show_shapes=True)
 
 model.compile(optimizer='Adam',
               loss='binary_crossentropy',
-              metrics=['accuracy'])
+              metrics=['binary_accuracy'])
 
 # %% MODEL 2: Dense neural network - more complex
 # Build model
 d_input = ecg_packets.shape[1]
 x = tf.keras.layers.Input(dtype='float64', shape=d_input)
-
-# lay_1 = tf.keras.layers.Dense(units=period_mean, activation='relu')(x)
-# lay_2 = tf.keras.layers.Dense(units=50, activation='relu')(lay_1)
-# lay_3 = tf.keras.layers.Dense(units=2, activation='softmax')(lay_2)
    
 lay_1 = tf.keras.layers.Dense(units=d_input*2, activation='relu', name='L1')(x)
 lay_2 = tf.keras.layers.Dense(units=d_input, activation='sigmoid', name='L2')(lay_1)
@@ -200,7 +198,7 @@ model.compile(optimizer='Adam',
 start = time.time()
 hist = model.fit(x=ecg_packets_train,
                     y=p_ts_packets_train,
-                    epochs=200,
+                    epochs=50,
                     batch_size=100,
                     validation_data=(ecg_packets_test, p_ts_packets_test))
 print(time.time()-start)
@@ -219,11 +217,25 @@ plt.show()
 # %% EXAMINE RESULTS
 pred_test = model.predict(ecg_packets_test)
 
-ax = plt.gca()
-for i in range(0, 30):
-    color = next(ax._get_lines.prop_cycler)['color']
-    # plt.plot(ecg_packets_test[i, :], color = color)
-    plt.plot(p_ts_packets_test[i, :], color=color)
-    plt.plot(pred_test[i, :], color=color)
-    plt.show()
+fig = plt.figure()
+n_rows = 4
+n_cols = 6
+gs = fig.add_gridspec(n_rows+1, n_cols)
+plt.get_current_fig_manager().window.state('zoomed')
+
+# ax_slider = plt.subplot(1, )
+# slider_packet = Slider(axs)
+for i, ax in enumerate(gs[n_cols:-1]):
+    ax.plot(ecg_packets_test[i, :])
+    ax.plot(p_ts_packets_test[i, :])
+    ax.plot(p_ts_packets_test[i, :]*-1, color='orange')
+    ax.plot(pred_test[i, :])
+    
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+plt.subplots_adjust(wspace=0, hspace=0)
+
+
+# %% PREDICT ENTIRE ECG
+
 
