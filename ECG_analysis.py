@@ -13,13 +13,15 @@ Notes:
     
     ann.show_ann_classes()
     
-Interrogations:
-    1- Is it better to 1-hot encode for training or can we just have one model output ranging from 0 to 1?
-    2- Which data to feed into the model?
-        - how much does the size of the rolling window impact model performance?
-        - strategy:
-            + assign beginning of time trace for training, the rest for testing
-            + get random chunks of data of size period_mean
+1- Parameters impoacting the model
+    - batch size has little influence
+    - 2 layers is much better than 1 layer
+    - size of first layer can be relatively small compared to the number of data points in window
+    - size of the rolling window impact model performance?
+    - down sampling?
+    
+TO DO:
+    - plot the packets chronologically to "locate" them more easily
     
 
 """
@@ -46,8 +48,8 @@ InteractiveShell.ast_node_interactivity = "all"
 
 
 # %% LOAD FILES
-# path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
-path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+# path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
 os.chdir(path)
 
 record = wfdb.rdrecord("mitdb/100")
@@ -155,6 +157,8 @@ p_ts_packets_test = p_ts_packets[int(n_inputs*perc_split):-1]
 
 # %% MODEL 1: Dense neural network - simplest model
 # Build model
+d_mult = "single_layer"
+
 d_input = ecg_packets.shape[1]
 x = tf.keras.layers.Input(dtype='float64', shape=d_input)
    
@@ -175,10 +179,12 @@ model.compile(optimizer='Adam',
 
 # %% MODEL 2: Dense neural network - more complex
 # Build model
+d_mult = 1.2
+
 d_input = ecg_packets.shape[1]
 x = tf.keras.layers.Input(dtype='float64', shape=d_input)
-   
-lay_1 = tf.keras.layers.Dense(units=d_input*2, activation='relu', name='L1')(x)
+
+lay_1 = tf.keras.layers.Dense(units=int(d_input*d_mult), activation='relu', name='L1')(x)
 lay_2 = tf.keras.layers.Dense(units=d_input, activation='sigmoid', name='L2')(lay_1)
 
 #prediction: probability->integer
@@ -199,7 +205,7 @@ start = time.time()
 hist = model.fit(x=ecg_packets_train,
                     y=p_ts_packets_train,
                     epochs=50,
-                    batch_size=100,
+                    batch_size=50,
                     validation_data=(ecg_packets_test, p_ts_packets_test))
 print(time.time()-start)
 
@@ -207,35 +213,64 @@ print(time.time()-start)
 fig, axs = plt.subplots(1, 2, figsize=(10,5))
 axs[0].plot(hist.epoch, hist.history['loss'])
 axs[0].plot(hist.epoch, hist.history['val_loss'])
-axs[0].legend(('training loss', 'validation loss'), loc='lower right')
+axs[0].legend(('training loss', 'validation loss'), loc='upper right')
+
 axs[1].plot(hist.epoch, hist.history['binary_accuracy'])
 axs[1].plot(hist.epoch, hist.history['val_binary_accuracy'])
+axs[1].legend(('training accuracy', 'validation accuracy'),
+              title=f"batch size={hist.params['batch_size']}\n"
+              f"validation accuracy={hist.history['val_binary_accuracy'][-1]:.3f}",
+              loc='lower right')
 
-axs[1].legend(('training accuracy', 'validation accuracy'), loc='lower right')
+fig.suptitle(f"packet length = {packet_length}\n"
+             f"down sampling = {sampling}\n"
+             f"layer_1 dimension = {d_input}*{d_mult} = {int(d_input*d_mult)}")
 plt.show()
 
 # %% EXAMINE RESULTS
-pred_test = model.predict(ecg_packets_test)
+data = ecg_packets_test
+data_ann = p_ts_packets_test
+pred_test = model.predict(data)
 
-fig = plt.figure()
 n_rows = 4
 n_cols = 6
-gs = fig.add_gridspec(n_rows+1, n_cols)
+n_plots = n_rows * n_cols
+fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, sharey=True)
 plt.get_current_fig_manager().window.state('zoomed')
+plt.subplots_adjust(top=0.90)
 
-# ax_slider = plt.subplot(1, )
-# slider_packet = Slider(axs)
-for i, ax in enumerate(gs[n_cols:-1]):
-    ax.plot(ecg_packets_test[i, :])
-    ax.plot(p_ts_packets_test[i, :])
-    ax.plot(p_ts_packets_test[i, :]*-1, color='orange')
-    ax.plot(pred_test[i, :])
+# inititate plot lines (ls_xxx) that will later be updated by the slider
+ls_data = []
+ls_data_ann = []
+ls_data_ann2 = []
+ls_pred_test = []
+for i, ax in enumerate(axs.flat):
+    ls_data.append(ax.plot(data[i, :]))
+    ls_data_ann.append(ax.plot(data_ann[i, :]))
+    ls_data_ann2.append(ax.plot(data_ann[i, :]*-1, color='orange'))
+    ls_pred_test.append(ax.plot(pred_test[i, :]))
     
     ax.set_xticklabels([])
     ax.set_yticklabels([])
+    ax.set_ylim(ymin=-1.2, ymax=1.3)
 plt.subplots_adjust(wspace=0, hspace=0)
 
+ax_slider = plt.axes([0.25, 0.95, 0.65, 0.03])
+slider_packet = Slider(ax=ax_slider,
+                       label='Test packet',
+                       valmin=0,
+                       valmax=data.shape[0]-n_plots,
+                       valstep=n_plots,
+                       valinit=0)
 
+def update_slider(val):
+    for i in np.arange(n_plots):
+        ls_data[i][0].set_ydata(data[i+val, :])
+        ls_data_ann[i][0].set_ydata(data_ann[i+val, :])
+        ls_data_ann2[i][0].set_ydata(data_ann[i+val, :]*-1)
+        ls_pred_test[i][0].set_ydata(pred_test[i+val, :])
+        
+slider_packet.on_changed(update_slider)
 # %% PREDICT ENTIRE ECG
 
 
