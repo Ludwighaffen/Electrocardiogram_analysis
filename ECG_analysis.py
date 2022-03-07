@@ -37,6 +37,7 @@ import tensorflow as tf
 import tensorflow.keras
 from scipy.stats import norm
 from scipy.optimize import curve_fit
+from scipy import signal
 import time
 from matplotlib.widgets import Slider
 
@@ -48,8 +49,8 @@ InteractiveShell.ast_node_interactivity = "all"
 
 
 # %% LOAD FILES
-path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
-# path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+# path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
 os.chdir(path)
 
 record = wfdb.rdrecord("mitdb/100")
@@ -129,13 +130,30 @@ for i in atr.sample:
 # plt.legend()
 # plt.show()
 
+# Frequency filtering
+ecg_ft = np.fft.rfft(ecg)
+fq = 360
+t = np.linspace(start=0, stop=ecg.shape[0]/fq, num=ecg.size)
+f = np.fft.rfftfreq(ecg.size, d=1/fq)
+plt.figure()
+plt.plot(f[1:], np.abs(ecg_ft[1:]))
+plt.xlim([0, 60])
+plt.xlabel('frequency [Hz]')
+plt.title('real Fourier transform')
+
+# sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
+sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
+ecg_f = signal.sosfilt(sos, ecg)
+plt.figure()
+plt.plot(ecg_f[:1000])
+
 # %% PREP DATA
 """
 Split data into packets of same length to feed to the model
 The start of the chunk isi randomly chosen
 remove the first (weird annotation) and the last two heartbeats (for dimension consistency)
 """
-packet_length = 300
+packet_length = 286
 sampling = 2
 packet_length_ds = ecg[: packet_length : sampling].shape[0]
 ecg_packets = np.zeros(shape=(int(ecg.shape[0]/packet_length), packet_length_ds))
@@ -179,7 +197,7 @@ model.compile(optimizer='Adam',
 
 # %% MODEL 2: Dense neural network - more complex
 # Build model
-d_mult = 1.2
+d_mult = 1.0
 
 d_input = ecg_packets.shape[1]
 x = tf.keras.layers.Input(dtype='float64', shape=d_input)
@@ -198,29 +216,37 @@ tf.keras.utils.plot_model(model, show_shapes=True)
 
 model.compile(optimizer='Adam',
               loss='binary_crossentropy',
-              metrics=['binary_accuracy'])
+              metrics=tf.keras.metrics.BinaryAccuracy(threshold=0.5))
+
+# %% MODEL 3: Convolutional neural network
+# lay
 
 # %% TRAIN MODEL
+batch_size = 50
+
 start = time.time()
 hist = model.fit(x=ecg_packets_train,
                     y=p_ts_packets_train,
                     epochs=50,
-                    batch_size=50,
+                    batch_size=batch_size,
                     validation_data=(ecg_packets_test, p_ts_packets_test))
 print(time.time()-start)
 
 # %% PLOT RESULTS
+"""N.B.: hist.params['batch_size'] does not work on Thermo's PC"""
 fig, axs = plt.subplots(1, 2, figsize=(10,5))
 axs[0].plot(hist.epoch, hist.history['loss'])
 axs[0].plot(hist.epoch, hist.history['val_loss'])
 axs[0].legend(('training loss', 'validation loss'), loc='upper right')
+axs[0].set_xlabel('epoch')
 
 axs[1].plot(hist.epoch, hist.history['binary_accuracy'])
 axs[1].plot(hist.epoch, hist.history['val_binary_accuracy'])
 axs[1].legend(('training accuracy', 'validation accuracy'),
-              title=f"batch size={hist.params['batch_size']}\n"
+              title=f"batch size={batch_size}\n"
               f"validation accuracy={hist.history['val_binary_accuracy'][-1]:.3f}",
               loc='lower right')
+axs[1].set_xlabel('epoch')
 
 fig.suptitle(f"packet length = {packet_length}\n"
              f"down sampling = {sampling}\n"
@@ -228,6 +254,7 @@ fig.suptitle(f"packet length = {packet_length}\n"
 plt.show()
 
 # %% EXAMINE RESULTS
+"""N.B.: run %matplotlib auto in console"""
 data = ecg_packets_test
 data_ann = p_ts_packets_test
 pred_test = model.predict(data)
@@ -271,6 +298,3 @@ def update_slider(val):
         ls_pred_test[i][0].set_ydata(pred_test[i+val, :])
         
 slider_packet.on_changed(update_slider)
-# %% PREDICT ENTIRE ECG
-
-
