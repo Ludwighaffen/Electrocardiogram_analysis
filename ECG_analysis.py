@@ -62,6 +62,7 @@ ann.__dict__.items()
 atr.__dict__.items()
 
 ecg = record.p_signal[:, 0]
+ecg_v5 = record.p_signal[:, 1]
 
 # translate discrete p-wave annotation into digital signal
 # p-wave is +-width around annotation
@@ -77,6 +78,9 @@ width = 6
 for i in atr.sample:
     r_ts[max(i-width, 0):min(i+width, record.sig_len)] = 1
 
+fq = 360
+t = np.linspace(start=0, stop=ecg.size/fq, num=ecg.size)
+tss = np.vstack((t, ecg, p_ts)).T
 
 # %% EXPLORE DATA
 # # analyse heartbeats periods
@@ -132,8 +136,6 @@ for i in atr.sample:
 
 # Frequency filtering
 ecg_ft = np.fft.rfft(ecg)
-fq = 360
-t = np.linspace(start=0, stop=ecg.shape[0]/fq, num=ecg.size)
 f = np.fft.rfftfreq(ecg.size, d=1/fq)
 plt.figure()
 plt.plot(f[1:], np.abs(ecg_ft[1:]))
@@ -145,7 +147,8 @@ plt.title('real Fourier transform')
 sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
 ecg_f = signal.sosfilt(sos, ecg)
 plt.figure()
-plt.plot(ecg_f[:1000])
+plt.plot(ecg[:1000])
+plt.plot(ecg_v5[:1000])
 
 # %% PREP DATA
 """
@@ -216,10 +219,22 @@ tf.keras.utils.plot_model(model, show_shapes=True)
 
 model.compile(optimizer='Adam',
               loss='binary_crossentropy',
-              metrics=tf.keras.metrics.BinaryAccuracy(threshold=0.5))
+              metrics=['binary_accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
 
 # %% MODEL 3: Convolutional neural network
-# lay
+"""let's try one feature map (1D-line) followed by one dense layer
+and maybe try to transform the dense layer into a convolutional layer of correct size
+
+testing:
+data = tf.keras.utils.timeseries_dataset_from_array(data=tss,
+                                                    targets=None,
+                                                    sequence_length=300,
+                                                    sequence_stride=300,
+                                                    sampling_rate=1)
+for el in data:
+    inputs = el
+    """
+lay_1 = tf.keras.layers.Conv1D()
 
 # %% TRAIN MODEL
 batch_size = 50
