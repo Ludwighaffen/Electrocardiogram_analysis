@@ -21,7 +21,9 @@ Notes:
     - down sampling?
     
 TO DO:
-    - plot the packets chronologically to "locate" them more easily
+    - use random seed to generate the same random packets (or plot the packets chronologically to "locate" them more easily)
+    - compute a different accuracy metric based on discrete p-wave annotation (not every data point)
+    - use 2D-convolutional network on signal spectrogram
     
 
 """
@@ -78,6 +80,7 @@ width = 6
 for i in atr.sample:
     r_ts[max(i-width, 0):min(i+width, record.sig_len)] = 1
 
+# Generate time vector
 fq = 360
 t = np.linspace(start=0, stop=ecg.size/fq, num=ecg.size)
 tss = np.vstack((t, ecg, p_ts)).T
@@ -134,7 +137,7 @@ tss = np.vstack((t, ecg, p_ts)).T
 # plt.legend()
 # plt.show()
 
-# Frequency filtering
+# Fourier transform
 ecg_ft = np.fft.rfft(ecg)
 f = np.fft.rfftfreq(ecg.size, d=1/fq)
 plt.figure()
@@ -143,12 +146,22 @@ plt.xlim([0, 60])
 plt.xlabel('frequency [Hz]')
 plt.title('real Fourier transform')
 
+# Filtering frequencies
 # sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
 sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
 ecg_f = signal.sosfilt(sos, ecg)
 plt.figure()
-plt.plot(ecg[:1000])
-plt.plot(ecg_v5[:1000])
+plt.plot(ecg_f[:1000])
+# plt.plot(ecg_v5[:1000])
+
+# Spectrogram
+plt.figure()
+spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*286], fq)
+plt.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
+# plt.pcolormesh(spec_t[:10], spec_f[:], spec_map[:,:10], cmap='hsv')
+plt.ylabel('Frequency [Hz]')
+plt.xlabel('Time [sec]')
+plt.colorbar()
 
 # %% PREP DATA
 """
@@ -234,7 +247,8 @@ data = tf.keras.utils.timeseries_dataset_from_array(data=tss,
 for el in data:
     inputs = el
     """
-lay_1 = tf.keras.layers.Conv1D()
+# lay_1 = tf.keras.layers.Conv1D()
+tf.keras.layers.MaxPool1D()
 
 # %% TRAIN MODEL
 batch_size = 50
