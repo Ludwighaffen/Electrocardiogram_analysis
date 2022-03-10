@@ -247,7 +247,7 @@ data = tf.keras.utils.timeseries_dataset_from_array(data=tss,
 for el in data:
     inputs = el
     """
-# lay_1 = tf.keras.layers.Conv1D()
+lay_1 = tf.keras.layers.Conv1D()
 tf.keras.layers.MaxPool1D()
 
 # %% TRAIN MODEL
