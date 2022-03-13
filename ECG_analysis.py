@@ -8,24 +8,23 @@ Notes:
     - The p-wave annotations are not all centered on the the peak of the wave.
     This might hinder the model performance. There are 2257 p-waves annotated.
     - There are 16 hertbeats that have no p-wave annotated
-    - input of 80% of the time trace is not doable since there will be too many parameters on the first layer
-    
-    
-    ann.show_ann_classes()
     
 1- Parameters impoacting the model
     - batch size has little influence
     - 2 layers is much better than 1 layer
     - size of first layer can be relatively small compared to the number of data points in window
+    best results for size=1.2 to 1.5 * the number of data points (1.5x shows more overfitting,
+    looking at the gap between train and test accuracy)
     - size of the rolling window impact model performance?
+        => size around signal period gives best result
     - down sampling?
+        => slightly worst accuracy for down sampling > 2
     
 TO DO:
-    - use random seed to generate the same random packets (or plot the packets chronologically to "locate" them more easily)
+    DONE- use random seed to generate the same random packets (or plot the packets chronologically to "locate" them more easily)
     - compute a different accuracy metric based on discrete p-wave annotation (not every data point)
     - use 2D-convolutional network on signal spectrogram
     
-
 """
 __author__ = "Ludovic Le Reste"
 __credits__ = ["Hisham Ben Hamidane", "Ludovic Le Reste"]
@@ -51,8 +50,8 @@ InteractiveShell.ast_node_interactivity = "all"
 
 
 # %% LOAD FILES
-# path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
-path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+# path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
 os.chdir(path)
 
 record = wfdb.rdrecord("mitdb/100")
@@ -137,31 +136,31 @@ tss = np.vstack((t, ecg, p_ts)).T
 # plt.legend()
 # plt.show()
 
-# Fourier transform
-ecg_ft = np.fft.rfft(ecg)
-f = np.fft.rfftfreq(ecg.size, d=1/fq)
-plt.figure()
-plt.plot(f[1:], np.abs(ecg_ft[1:]))
-plt.xlim([0, 60])
-plt.xlabel('frequency [Hz]')
-plt.title('real Fourier transform')
+# # Fourier transform
+# ecg_ft = np.fft.rfft(ecg)
+# f = np.fft.rfftfreq(ecg.size, d=1/fq)
+# plt.figure()
+# plt.plot(f[1:], np.abs(ecg_ft[1:]))
+# plt.xlim([0, 60])
+# plt.xlabel('frequency [Hz]')
+# plt.title('real Fourier transform')
 
-# Filtering frequencies
-# sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
-sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
-ecg_f = signal.sosfilt(sos, ecg)
-plt.figure()
-plt.plot(ecg_f[:1000])
-# plt.plot(ecg_v5[:1000])
+# # Filtering frequencies
+# # sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
+# sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
+# ecg_f = signal.sosfilt(sos, ecg)
+# plt.figure()
+# plt.plot(ecg_f[:1000])
+# # plt.plot(ecg_v5[:1000])
 
-# Spectrogram
-plt.figure()
-spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*286], fq)
-plt.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
-# plt.pcolormesh(spec_t[:10], spec_f[:], spec_map[:,:10], cmap='hsv')
-plt.ylabel('Frequency [Hz]')
-plt.xlabel('Time [sec]')
-plt.colorbar()
+# # Spectrogram
+# plt.figure()
+# spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*286], fq)
+# plt.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
+# # plt.pcolormesh(spec_t[:10], spec_f[:], spec_map[:,:10], cmap='hsv')
+# plt.ylabel('Frequency [Hz]')
+# plt.xlabel('Time [sec]')
+# plt.colorbar()
 
 # %% PREP DATA
 """
@@ -169,16 +168,19 @@ Split data into packets of same length to feed to the model
 The start of the chunk isi randomly chosen
 remove the first (weird annotation) and the last two heartbeats (for dimension consistency)
 """
-packet_length = 286
+packet_length = 400
 sampling = 2
 packet_length_ds = ecg[: packet_length : sampling].shape[0]
 ecg_packets = np.zeros(shape=(int(ecg.shape[0]/packet_length), packet_length_ds))
 p_ts_packets = np.zeros(shape=ecg_packets.shape, dtype=int)
 
+rng = np.random.default_rng(42)
+ints = rng.integers(low=0, high=ecg.size-packet_length, size=ecg_packets.shape[0])
+
 for i in range(ecg_packets.shape[0]):
-    offset = np.random.randint(low=0, high=ecg.shape[0]-packet_length)
-    ecg_packets[i, :] = ecg[offset : offset+packet_length : sampling]
-    p_ts_packets[i, :] = p_ts[offset : offset+packet_length : sampling]
+    # offset = np.random.randint(low=0, high=ecg.shape[0]-packet_length)
+    ecg_packets[i, :] = ecg[ints[i] : ints[i]+packet_length : sampling]
+    p_ts_packets[i, :] = p_ts[ints[i] : ints[i]+packet_length : sampling]
 
 # split train, test
 perc_split = 0.8
@@ -213,7 +215,7 @@ model.compile(optimizer='Adam',
 
 # %% MODEL 2: Dense neural network - more complex
 # Build model
-d_mult = 1.0
+d_mult = 1.2
 
 d_input = ecg_packets.shape[1]
 x = tf.keras.layers.Input(dtype='float64', shape=d_input)
@@ -247,8 +249,8 @@ data = tf.keras.utils.timeseries_dataset_from_array(data=tss,
 for el in data:
     inputs = el
     """
-lay_1 = tf.keras.layers.Conv1D()
-tf.keras.layers.MaxPool1D()
+# lay_1 = tf.keras.layers.Conv1D()
+# tf.keras.layers.MaxPool1D()
 
 # %% TRAIN MODEL
 batch_size = 50
@@ -261,9 +263,51 @@ hist = model.fit(x=ecg_packets_train,
                     validation_data=(ecg_packets_test, p_ts_packets_test))
 print(time.time()-start)
 
+# %% COMPUTE NEW METRICS
+"""
+1- transform raw output to digital (0-1, i.e. p-wave or no p-wave)
+2- Figure out a smart way to compare output blocks with p_ts blocks
+3- compute precision, recall, and calculate accuracy from those
+"""
+# Initialise variables
+data = ecg_packets_test
+data_ann = p_ts_packets_test
+pred = model.predict(data)
+
+# Compute blocks corresponding to p-waves ([start, end] indexes pf p-waves)
+pred_dig = pred > 0.5
+pred_pos = []
+data_ann_pos = []
+for i in range(data.shape[0]):
+    sw_pred = np.argwhere(np.diff(pred_dig[i,:])).squeeze()
+    sw_ann = np.argwhere(np.diff(data_ann[i,:])).squeeze()
+    # adjust for start and end values
+    if pred_dig[i, 0]==True:
+        sw_pred = np.insert(sw_pred, 0, 0)
+    if pred_dig[i, -1]==True:
+        sw_pred = np.append(sw_pred, data.shape[1])
+    if data_ann[i, 0]==True:
+        sw_ann = np.insert(sw_ann, 0, 0)
+    if data_ann[i, -1]==True:
+        sw_ann = np.append(sw_ann, data.shape[1])
+    pred_pos.append(sw_pred.reshape(-1, 2))
+    data_ann_pos.append(sw_ann.reshape(-1, 2))
+
+# True positives
+"""
+take one packet
+take one p-wave interval, is there any number in pred_pos within this interval?
+repeat for all p-wave interval
+repeat for all packets
+"""
+i=0
+j=0
+data_ann_pos[i][j]
+pred_pos[i][:].ravel()
+
 # %% PLOT RESULTS
 """N.B.: hist.params['batch_size'] does not work on Thermo's PC"""
-fig, axs = plt.subplots(1, 2, figsize=(10,5))
+fig, axs = plt.subplots(1, 3, figsize=(13,5))
 axs[0].plot(hist.epoch, hist.history['loss'])
 axs[0].plot(hist.epoch, hist.history['val_loss'])
 axs[0].legend(('training loss', 'validation loss'), loc='upper right')
@@ -271,11 +315,22 @@ axs[0].set_xlabel('epoch')
 
 axs[1].plot(hist.epoch, hist.history['binary_accuracy'])
 axs[1].plot(hist.epoch, hist.history['val_binary_accuracy'])
-axs[1].legend(('training accuracy', 'validation accuracy'),
+axs[2].legend(('training accuracy', 'validation accuracy'),
               title=f"batch size={batch_size}\n"
               f"validation accuracy={hist.history['val_binary_accuracy'][-1]:.3f}",
               loc='lower right')
 axs[1].set_xlabel('epoch')
+
+axs[2].plot(hist.epoch, hist.history['precision'])
+axs[2].plot(hist.epoch, hist.history['val_precision'])
+axs[2].plot(hist.epoch, hist.history['recall'])
+axs[2].plot(hist.epoch, hist.history['val_recall'])
+axs[2].legend(('precision', 'val_precision',
+               'recall', 'val_recall'),
+              title=f"val_precision={hist.history['val_precision'][-1]:.3f}\n"
+              f"val_recall={hist.history['val_recall'][-1]:.3f}",
+              loc='lower right')
+axs[2].set_xlabel('epoch')
 
 fig.suptitle(f"packet length = {packet_length}\n"
              f"down sampling = {sampling}\n"
@@ -284,10 +339,6 @@ plt.show()
 
 # %% EXAMINE RESULTS
 """N.B.: run %matplotlib auto in console"""
-data = ecg_packets_test
-data_ann = p_ts_packets_test
-pred_test = model.predict(data)
-
 n_rows = 4
 n_cols = 6
 n_plots = n_rows * n_cols
@@ -299,12 +350,12 @@ plt.subplots_adjust(top=0.90)
 ls_data = []
 ls_data_ann = []
 ls_data_ann2 = []
-ls_pred_test = []
+ls_pred = []
 for i, ax in enumerate(axs.flat):
     ls_data.append(ax.plot(data[i, :]))
     ls_data_ann.append(ax.plot(data_ann[i, :]))
     ls_data_ann2.append(ax.plot(data_ann[i, :]*-1, color='orange'))
-    ls_pred_test.append(ax.plot(pred_test[i, :]))
+    ls_pred.append(ax.plot(pred[i, :]))
     
     ax.set_xticklabels([])
     ax.set_yticklabels([])
@@ -324,6 +375,6 @@ def update_slider(val):
         ls_data[i][0].set_ydata(data[i+val, :])
         ls_data_ann[i][0].set_ydata(data_ann[i+val, :])
         ls_data_ann2[i][0].set_ydata(data_ann[i+val, :]*-1)
-        ls_pred_test[i][0].set_ydata(pred_test[i+val, :])
+        ls_pred[i][0].set_ydata(pred[i+val, :])
         
 slider_packet.on_changed(update_slider)
