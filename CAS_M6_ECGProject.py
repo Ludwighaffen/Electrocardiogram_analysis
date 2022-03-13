@@ -20,7 +20,7 @@ from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
 
 # Setting the wd
-path = "C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021/Module 6 deep neural network/mitdb"
+path = "C:/Users/shami/Documents/CAS 2021/M6 Project/physiobank/database/mitdb"
 os.chdir(path)
 
 # Reading the input files
@@ -46,9 +46,11 @@ for i,v in zip(ann.sample, ann.symbol):
 
 # Defining the target_sampling value that will define the length of the bits of x that will be passed as input
 ## down_sampling is the fold reduction of the signal datapoint number; 1st try, no downsampling, var set to 1
-down_sampling = 1
+down_sampling = 3
 ## target_sampling is the arbitrary number of signal datapoints that will be fed as input to the NN
-target_sampling = 390
+target_sampling = 1800
+## defining a generalized sample size from target sampling and down sampling values
+sample_size= int(target_sampling/down_sampling)
 
 # Apply the target_sampling to both x and y
 bins = int(x.shape[0]/target_sampling)
@@ -192,23 +194,19 @@ for i in range(0, 10):
     plt.plot(test_y[i, :], color = color)
     plt.plot(test_x[i, :], color = color)
     plt.plot(pred_test[i, :], color = color)
-    plt.plot(error[i, :], color = 'red')
     plt.show()
 
-for i in range(0,10):
-    plt.plot(test_x[i,:])
-    
 # %% Convolutional NN
 # 4.3 Creating a convolution neural network
 # MODEL 3: Convolution neural network
 
 ## input x defined as previously with dimensions (number of training bins x target sampling)
-x = tf.keras.layers.Input(dtype='float64', shape=(target_sampling, 1))
+x = tf.keras.layers.Input(dtype='float64', shape=(sample_size, 1))
 ## Reshaping the training and testing input x so that each vector of n elements is now a list of n elements (in R linguo)
-train_x_rs = tf.reshape(train_x,(train_x.shape[0], target_sampling, 1))
-train_y_rs = tf.reshape(train_y, (train_y.shape[0], target_sampling, 1))
-test_x_rs = tf.reshape(test_x,(test_x.shape[0], target_sampling, 1))
-test_y_rs = tf.reshape(test_y, (test_y.shape[0], target_sampling, 1))
+train_x_rs = tf.reshape(train_x,(train_x.shape[0], sample_size, 1))
+train_y_rs = tf.reshape(train_y, (train_y.shape[0], sample_size, 1))
+test_x_rs = tf.reshape(test_x,(test_x.shape[0], sample_size, 1))
+test_y_rs = tf.reshape(test_y, (test_y.shape[0], sample_size, 1))
 # defining global parameters for the convolutional layers
 stride = 1
 dilation = 1
@@ -216,21 +214,21 @@ dilation = 1
 # Defining the convolutional neural networs
 ## 1. convolutional layers
 ## convolution layers accpet input with shape (*,1); 1st argument is number of filters, 2nd argument kernel size (here 1D) 
-C1 = tf.keras.layers.Conv1D(int(target_sampling/2), 13, padding = 'same', activation ='relu', input_shape= (None, target_sampling, 1), name = 'C1')(x) 
-C2 = tf.keras.layers.Conv1D(int(target_sampling/3), 7, padding = 'same', activation ='relu', name = 'C2')(C1)
+C1 = tf.keras.layers.Conv1D(100, sample_size, padding = 'same', activation ='relu', input_shape= (None, sample_size, 1), name = 'C1')(x) 
+C2 = tf.keras.layers.Conv1D(50, int(sample_size/2), padding = 'same', activation ='relu', name = 'C2')(C1)
 # 2. Pooling layer; pooling by groups of pool_size, using padding = 'same' to retain the input dimensions
-P1 = tf.keras.layers.MaxPool1D(pool_size=int(target_sampling/3), strides=stride, padding='same', name = 'P1')(C2)
+#P1 = tf.keras.layers.MaxPool1D(pool_size=int(target_sampling/3), strides=stride, padding='same', name = 'P1')(C2)
 # 3. convolutional layer, higher filter count, reduced kernel size
-C3 = tf.keras.layers.Conv1D(int(target_sampling/5), 3, padding = 'same', activation = 'relu', name = 'C3')(P1)
+#C3 = tf.keras.layers.Conv1D(int(target_sampling/5), 3, padding = 'same', activation = 'relu', name = 'C3')(P1)
 # 4. flatten layer; not needed as long as input (x) dimensions are maintained through the use of padding (argument ='same')
 #F1 = tf.keras.layers.Flatten()(C3)
 # 5. dense layer 1 and 2 to apply classical NN computations on convoluted input
-D1 = tf.keras.layers.Dense(units=target_sampling*3, activation = 'relu', name='D1')(C3)
-D2 = tf.keras.layers.Dense(units=target_sampling, activation = 'relu', name='D2')(D1)
-D3 = tf.keras.layers.Dense(units=1, activation = 'sigmoid', name = 'D2')(D2)
+D1 = tf.keras.layers.Dense(units=int(sample_size/3), activation = 'relu', name='D1')(C2)
+#D2 = tf.keras.layers.Dense(units=sample_size, activation = 'relu', name='D2')(D1)
+D3 = tf.keras.layers.Dense(units=1, activation = 'sigmoid', name = 'D3')(D1)
 
 ## definition
-model = tf.keras.Model(inputs=x, outputs=[D2])
+model = tf.keras.Model(inputs=x, outputs=[D3])
 
 # compiling the model
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['binary_accuracy'])
@@ -242,8 +240,8 @@ tf.keras.utils.plot_model(model, show_shapes=True)
 # test the model accuracy
 hist = model.fit(x=train_x_rs,
                  y=train_y_rs,
-                 epochs=20,
-                 batch_size=200,
+                 epochs=10,
+                 batch_size=int(train_idx_count/10),
                  validation_data=(test_x_rs, test_y_rs))
 
 #conv1d = tf.keras.layers.Conv1D(26, 13, padding = 'same', activation ='relu', input_shape= (None, target_sampling, 1))
