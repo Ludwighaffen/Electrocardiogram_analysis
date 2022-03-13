@@ -85,82 +85,98 @@ t = np.linspace(start=0, stop=ecg.size/fq, num=ecg.size)
 tss = np.vstack((t, ecg, p_ts)).T
 
 # %% EXPLORE DATA
-# # analyse heartbeats periods
-# period = np.diff(atr.sample)
+# Analyse heartbeats periods
+period = np.diff(atr.sample)
+period_p = np.diff(ann.sample)
 
-# # Fit a normal distribution to period distribution
-# # TBD : fit can be improved (pdf vs absolute counts)
-# mu, std = norm.fit(period) 
-# period_mean = int(mu)
+# Fit a normal distribution to period distribution
+mu, std = norm.fit(period) 
+period_mean = int(mu)
   
-# # Plot the histogram and Probability Density Function.
-# plt.figure()
-# plt.hist(period, bins=100, density=True, alpha=0.6, color='b')
-  
-# x_min, x_max = plt.xlim()
-# x_prob = np.linspace(x_min, x_max, 100)
-# prob = norm.pdf(x_prob, period_mean, std)
-  
-# plt.plot(x_prob, prob, 'k', linewidth=2)
-# title = f"Fit Values: {period_mean} and {std}"
-# plt.title(title)
-# plt.show()
+mu_p, std_p = norm.fit(period_p) 
+period_mean_p = int(mu_p)
 
-# """
-# N.B.:
-#     There are a few (17) heartbeats with no p-wave annotated
-#     There is only one weird heartbeat (lasting 407 samples: heartbeat # 1907)
-# """
-# print(f"There are {np.count_nonzero(period > 400)} periods longer than 400 original samples, meaning with no r-wave.")
+# Plot the histogram and Probability Density Function.
+fig, axs = plt.subplots(1, 2, sharey=True)
 
-# # Plot time series
-# n_samples = period_mean*6
-# heartbeats = np.where(period>00)[0]
-# case = 1
-# plt.figure()
-# plt.plot(ecg, label='ecg')
-# plt.plot(p_ts, label='p-wave')
-# plt.plot(r_ts, label='r-wave')
-# plt.xlim([atr.sample[heartbeats[case]-1], atr.sample[heartbeats[case]-1]+ n_samples])
-# # plt.xlim([0, n_samples])
-# plt.legend()
-# plt.show()
+axs[0].hist(period, bins=100, density=True, alpha=0.6, color='b')
+x_min, x_max = axs[0].get_xlim()
+x_prob = np.linspace(x_min, x_max, 100)
+prob = norm.pdf(x_prob, period_mean, std)
+axs[0].plot(x_prob, prob, 'k', linewidth=2)
+axs[0].set_xlabel('# data points')
+axs[0].set_ylabel('density')
+axs[0].legend(title=f"Fit mean={period_mean}")
+axs[0].set_title("r-waves")
 
-# """first r-wave is wrongly labelled"""
-# plt.figure()
-# plt.plot(ecg, label='ecg')
-# plt.plot(p_ts, label='p-wave')
-# plt.plot(r_ts, label='r-wave')
-# plt.xlim([0, 500])
-# # plt.xlim([0, n_samples])
-# plt.legend()
-# plt.show()
+axs[1].hist(period_p, bins=100, density=True, alpha=0.6, color='b')
+axs[1].set_xlabel('# data points')
+axs[1].set_title('p-waves')
 
-# # Fourier transform
-# ecg_ft = np.fft.rfft(ecg)
-# f = np.fft.rfftfreq(ecg.size, d=1/fq)
-# plt.figure()
-# plt.plot(f[1:], np.abs(ecg_ft[1:]))
-# plt.xlim([0, 60])
-# plt.xlabel('frequency [Hz]')
-# plt.title('real Fourier transform')
+fig.suptitle('Signal periods')
+plt.show()
 
-# # Filtering frequencies
-# # sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
-# sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
-# ecg_f = signal.sosfilt(sos, ecg)
-# plt.figure()
-# plt.plot(ecg_f[:1000])
-# # plt.plot(ecg_v5[:1000])
+"""
+N.B.:
+    There are a few (16) heartbeats with no p-wave annotated
+    There is only one weird heartbeat (lasting 407 samples: heartbeat # 1907)
+"""
+print(f"There are {np.count_nonzero(period > 400)} r-wave periods longer than 400 data points")
+print(f"There are {np.count_nonzero(period_p > 400)} p-wave periods longer than 400 data points")
 
-# # Spectrogram
-# plt.figure()
-# spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*286], fq)
-# plt.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
-# # plt.pcolormesh(spec_t[:10], spec_f[:], spec_map[:,:10], cmap='hsv')
-# plt.ylabel('Frequency [Hz]')
-# plt.xlabel('Time [sec]')
-# plt.colorbar()
+# Plot time series
+n_samples = period_mean*4
+heartbeats = np.where(period>00)[0]
+case = 1
+fig, ax = plt.subplots()
+ax.plot(ecg, label='ecg')
+ax.plot(p_ts, label='p-wave')
+ax.plot(p_ts*-1, label='-(p-wave)', color='C1')
+ax.plot(r_ts, label='r-wave')
+ax.set_xlim([atr.sample[heartbeats[case]-1], atr.sample[heartbeats[case]-1]+ n_samples])
+# plt.xlim([0, n_samples])
+ax.set_xlabel('data points')
+ax.set_ylabel('value ([mV] or boolean)')
+secax = ax.secondary_xaxis('top', functions=(lambda x: x/fq, lambda x: x*fq))
+secax.set_xlabel('time [s]')
+plt.legend()
+plt.show()
+
+"""first r-wave is wrongly labelled"""
+fig, ax = plt.subplots()
+ax.plot(ecg, label='ecg')
+ax.plot(p_ts, label='p-wave')
+ax.plot(r_ts, label='r-wave')
+ax.set_xlim([0, 500])
+# plt.xlim([0, n_samples])
+ax.legend()
+plt.show()
+
+# Fourier transform
+ecg_ft = np.fft.rfft(ecg)
+f = np.fft.rfftfreq(ecg.size, d=1/fq)
+plt.figure()
+plt.plot(f[1:], np.abs(ecg_ft[1:]))
+plt.xlim([0, 60])
+plt.xlabel('frequency [Hz]')
+plt.title('real Fourier transform')
+
+# Filtering frequencies
+# sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
+sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
+ecg_f = signal.sosfilt(sos, ecg)
+plt.figure()
+plt.plot(ecg_f[:1000])
+# plt.plot(ecg_v5[:1000])
+
+# Spectrogram
+plt.figure()
+spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*286], fq)
+plt.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
+# plt.pcolormesh(spec_t[:10], spec_f[:], spec_map[:,:10], cmap='hsv')
+plt.ylabel('Frequency [Hz]')
+plt.xlabel('Time [sec]')
+plt.colorbar()
 
 # %% PREP DATA
 """
@@ -315,9 +331,8 @@ axs[0].set_xlabel('epoch')
 
 axs[1].plot(hist.epoch, hist.history['binary_accuracy'])
 axs[1].plot(hist.epoch, hist.history['val_binary_accuracy'])
-axs[2].legend(('training accuracy', 'validation accuracy'),
-              title=f"batch size={batch_size}\n"
-              f"validation accuracy={hist.history['val_binary_accuracy'][-1]:.3f}",
+axs[1].legend(('training accuracy', 'validation accuracy'),
+              title=f"validation accuracy={hist.history['val_binary_accuracy'][-1]:.3f}",
               loc='lower right')
 axs[1].set_xlabel('epoch')
 
@@ -334,7 +349,8 @@ axs[2].set_xlabel('epoch')
 
 fig.suptitle(f"packet length = {packet_length}\n"
              f"down sampling = {sampling}\n"
-             f"layer_1 dimension = {d_input}*{d_mult} = {int(d_input*d_mult)}")
+             f"layer_1 dimension = {d_input}*{d_mult} = {int(d_input*d_mult)}\n"
+             f"batch size={batch_size}")
 plt.show()
 
 # %% EXAMINE RESULTS
