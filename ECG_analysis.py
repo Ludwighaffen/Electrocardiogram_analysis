@@ -126,7 +126,7 @@ print(f"There are {np.count_nonzero(period_p > 400)} p-wave periods longer than 
 
 # Plot time series
 n_samples = period_mean*4
-heartbeats = np.where(period>400)[0]
+heartbeats = np.where(period>00)[0]
 case = 1
 fig, ax = plt.subplots()
 ax.plot(ecg, label='ecg')
