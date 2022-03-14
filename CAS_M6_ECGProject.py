@@ -46,9 +46,9 @@ for i,v in zip(ann.sample, ann.symbol):
 
 # Defining the target_sampling value that will define the length of the bits of x that will be passed as input
 ## down_sampling is the fold reduction of the signal datapoint number; 1st try, no downsampling, var set to 1
-down_sampling = 3
+down_sampling = 2
 ## target_sampling is the arbitrary number of signal datapoints that will be fed as input to the NN
-target_sampling = 1800
+target_sampling = 600
 ## defining a generalized sample size from target sampling and down sampling values
 sample_size= int(target_sampling/down_sampling)
 
@@ -56,8 +56,8 @@ sample_size= int(target_sampling/down_sampling)
 bins = int(x.shape[0]/target_sampling)
 
 # in subsetting the 3 argument is equivalent to a "by" in R; x[start:stop:step]
-x_binned = np.zeros(shape=(bins, int(target_sampling/down_sampling)))
-y_binned = np.zeros(shape=(bins, int(target_sampling/down_sampling)))
+x_binned = np.zeros(shape=(bins, sample_size))
+y_binned = np.zeros(shape=(bins, sample_size))
 for i in range(bins):
     x_binned[i,:] = x[i*target_sampling : i*target_sampling+target_sampling : down_sampling]
 for i in range(bins):
@@ -92,8 +92,8 @@ test_y = y_binned[test_idx]
 x = tf.keras.layers.Input(dtype='float64', shape=train_x.shape[1])
  
 # Deinfing the layers
-L1 = tf.keras.layers.Dense(units=target_sampling*5, activation='relu', name='L1')(x)
-L2 = tf.keras.layers.Dense(units=target_sampling, activation='sigmoid', name='L2')(L1)
+L1 = tf.keras.layers.Dense(units=sample_size*1.2, activation='relu', name='L1')(x)
+L2 = tf.keras.layers.Dense(units=sample_size, activation='sigmoid', name='L2')(L1)
 
 
 # model
@@ -111,8 +111,8 @@ model.compile(optimizer='Adam',
 # test the model accuracy
 hist = model.fit(x=train_x,
                  y=train_y,
-                 epochs=20,
-                 batch_size=200,
+                 epochs=100,
+                 batch_size=int(train_idx_count/5),
                  validation_data=(test_x, test_y))
 
 # %% Simple DNN accuracy plots
@@ -130,7 +130,7 @@ plt.show()
 pred_test = model.predict(test_x)
 
 ax = plt.gca()
-for i in range(0, 10):
+for i in range(0, 20):
     color = next(ax._get_lines.prop_cycler)['color']
     plt.plot(test_y[i, :], color = color)
     plt.plot(test_x[i, :], color = color)
@@ -144,11 +144,11 @@ for i in range(0, 10):
 x = tf.keras.layers.Input(dtype='float64', shape=train_x.shape[1])
  
 # Deinfing the layers
-L1 = tf.keras.layers.Dense(units=target_sampling*5, activation='relu', name='L1')(x)
-L2 = tf.keras.layers.Dense(units=target_sampling*3, activation='relu', name='L2')(L1)
-L3 = tf.keras.layers.Dense(units=target_sampling*2, activation='relu', name='L3')(L2)
-L4 = tf.keras.layers.Dense(units=target_sampling, activation='relu', name='L4')(L3)
-L5 = tf.keras.layers.Dense(units=target_sampling, activation='sigmoid', name='L5')(L4)
+L1 = tf.keras.layers.Dense(units=sample_size*1.2, activation='relu', name='L1')(x)
+L2 = tf.keras.layers.Dense(units=sample_size*1.5, activation='relu', name='L2')(L1)
+L3 = tf.keras.layers.Dense(units=sample_size*1.2, activation='relu', name='L3')(L2)
+L4 = tf.keras.layers.Dense(units=sample_size, activation='relu', name='L4')(L3)
+L5 = tf.keras.layers.Dense(units=sample_size, activation='sigmoid', name='L5')(L4)
 
 # model
 ## definition
@@ -169,8 +169,8 @@ model.compile(optimizer='Adam',
 # test the model accuracy
 hist = model.fit(x=train_x,
                  y=train_y,
-                 epochs=20,
-                 batch_size=200,
+                 epochs=100,
+                 batch_size=int(train_idx_count/10),
                  validation_data=(test_x, test_y))
 
 # %% Deeper DNN accuracy plots
@@ -240,8 +240,8 @@ tf.keras.utils.plot_model(model, show_shapes=True)
 # test the model accuracy
 hist = model.fit(x=train_x_rs,
                  y=train_y_rs,
-                 epochs=10,
-                 batch_size=int(train_idx_count/10),
+                 epochs=50,
+                 batch_size=int(train_idx_count/5),
                  validation_data=(test_x_rs, test_y_rs))
 
 #conv1d = tf.keras.layers.Conv1D(26, 13, padding = 'same', activation ='relu', input_shape= (None, target_sampling, 1))
