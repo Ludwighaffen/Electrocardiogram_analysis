@@ -50,8 +50,8 @@ InteractiveShell.ast_node_interactivity = "all"
 
 
 # %% LOAD FILES
-path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
-# path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+# path = "D:\Ludo\Docs\programming\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
+path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\CAS-Applied-Data-Science-master\Module-6\Electrocardiogram_analysis\Assignments\ECG\www.physionet.org\physiobank\database".replace("\\", "/")
 os.chdir(path)
 
 record = wfdb.rdrecord("mitdb/100")
@@ -126,7 +126,7 @@ print(f"There are {np.count_nonzero(period_p > 400)} p-wave periods longer than 
 
 # Plot time series
 n_samples = period_mean*4
-heartbeats = np.where(period>00)[0]
+heartbeats = np.where(period>400)[0]
 case = 1
 fig, ax = plt.subplots()
 ax.plot(ecg, label='ecg')
@@ -136,7 +136,7 @@ ax.plot(r_ts, label='r-wave')
 ax.set_xlim([atr.sample[heartbeats[case]-1], atr.sample[heartbeats[case]-1]+ n_samples])
 # plt.xlim([0, n_samples])
 ax.set_xlabel('data points')
-ax.set_ylabel('value ([mV] or boolean)')
+ax.set_ylabel('voltage [mV] or boolean')
 secax = ax.secondary_xaxis('top', functions=(lambda x: x/fq, lambda x: x*fq))
 secax.set_xlabel('time [s]')
 plt.legend()
@@ -155,28 +155,36 @@ plt.show()
 # Fourier transform
 ecg_ft = np.fft.rfft(ecg)
 f = np.fft.rfftfreq(ecg.size, d=1/fq)
-plt.figure()
-plt.plot(f[1:], np.abs(ecg_ft[1:]))
-plt.xlim([0, 60])
-plt.xlabel('frequency [Hz]')
-plt.title('real Fourier transform')
+fig, ax = plt.subplots()
+ax.plot(f[1:], np.abs(ecg_ft[1:]))
+ax.set_xlim([0, 60])
+ax.set_xlabel('frequency [Hz]')
+ax.set_title('real Fourier transform')
+plt.show()
 
 # Filtering frequencies
 # sos = signal.butter(N=10, Wn=[fq/50000, fq/50], btype='bandpass', output='sos', fs=fq)
-sos = signal.butter(N=10, Wn=30, btype='lowpass', output='sos', fs=fq)
+cutoff=30
+sos = signal.butter(N=10, Wn=cutoff, btype='lowpass', output='sos', fs=fq)
 ecg_f = signal.sosfilt(sos, ecg)
-plt.figure()
-plt.plot(ecg_f[:1000])
-# plt.plot(ecg_v5[:1000])
+fig, axs = plt.subplots(1, 2, sharey=True)
+axs[0].plot(ecg[:1000])
+axs[0].set_xlabel('data points')
+axs[0].set_ylabel('voltage [mV]')
+axs[0].set_title(f'raw signal (MLII)')
+axs[1].plot(ecg_f[:1000])
+axs[1].set_xlabel('data points')
+axs[1].set_title(f'Low-pass filtered (cut-off={cutoff}Hz)')
+plt.show()
 
 # Spectrogram
-plt.figure()
-spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*286], fq)
-plt.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
-# plt.pcolormesh(spec_t[:10], spec_f[:], spec_map[:,:10], cmap='hsv')
-plt.ylabel('Frequency [Hz]')
-plt.xlabel('Time [sec]')
-plt.colorbar()
+fig, ax = plt.subplots()
+spec_f, spec_t, spec_map = signal.spectrogram(ecg[:20*period_mean], fq)
+pcm = ax.pcolormesh(spec_t, spec_f, spec_map, shading='gouraud', cmap='hsv')
+ax.set_ylabel('Frequency [Hz]')
+ax.set_xlabel('Time [sec]')
+ax.set_title('Spectrogram (first 20 periods)')
+fig.colorbar(pcm, ax=ax)
 
 # %% PREP DATA
 """
@@ -194,7 +202,6 @@ rng = np.random.default_rng(42)
 ints = rng.integers(low=0, high=ecg.size-packet_length, size=ecg_packets.shape[0])
 
 for i in range(ecg_packets.shape[0]):
-    # offset = np.random.randint(low=0, high=ecg.shape[0]-packet_length)
     ecg_packets[i, :] = ecg[ints[i] : ints[i]+packet_length : sampling]
     p_ts_packets[i, :] = p_ts[ints[i] : ints[i]+packet_length : sampling]
 
